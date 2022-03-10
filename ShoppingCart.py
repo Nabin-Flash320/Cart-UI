@@ -4,11 +4,46 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
-import numpy as np
 import cv2 as cv
 import sys
 import requests
 import json
+
+class TrackObject(QThread):
+    image_signal = pyqtSignal('PyQt_PyObject')
+    def __init__(self, image):
+        super().__init__()
+        self.x = 0
+        self.y = 0
+        self.w = 0
+        self.h = 0
+        self.image = image
+
+
+    def get_shape(self):
+        return self.image.shape
+
+
+    def track(self):
+        copy_image = self.image.copy()
+
+        hsv_image = cv.cvtColor(self.image, cv.COLOR_BGR2HSV)
+        lowerlimit = np.array([29, 86, 6])
+        upperlimit = np.array([64, 255, 255])
+
+        mask = cv.inRange(hsv_image, lowerlimit, upperlimit)
+        mask = cv.erode(mask, None, iterations=2) 
+        mask = cv.dilate(mask, None, iterations=2)
+
+        contours, hierarchy = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
+
+        if contours.__len__() != 0:
+            cv.drawContours(copy_image, contours, -1, 255, 3)
+            max_contor = max(contours, key=cv.contourArea)
+            self.x, self.y, self.w, self.h = cv.boundingRect(max_contor)
+            return(self.x, self.y, self.w, self.h)
+        else:
+            return "Human out of range!!"
 
 
 class VideoThread(QThread):
@@ -25,7 +60,6 @@ class VideoThread(QThread):
             ret, cv_img = cap.read()
             if ret:
                 self.change_pixmap_signal.emit(cv_img)
-        # shut down capture system
         cap.release()
 
     def stop(self):
@@ -66,29 +100,30 @@ class ApplyQuery():
         if flag == 'c' and self.product_id:
             payload = {
                 'product_id':str(self.product_id),
-                'count':'1'
+                'count':'-1'
             }
             r = requests.post(self.url+'/'+str(id)+'/data', payload)
             datas = json.loads(r.text)
-            return self.parse_data(datas=datas)
+            return self.parse_data(datas=datas, keys=['key', 'cart_id'])
 
     def query_get(self, id, flag='p'):
         if flag=='p':
             r = requests.get(self.url+'/'+str(id)+'/data')
             datas = json.loads(r.text)
-            return self.parse_data(datas=datas)
+            return self.parse_data(datas=datas, keys=['product_mfd', 'product_epd'])
 
     def completed(self, id):
         payload = {
             'completed': True
         }
         r = requests.post(self.url+'/'+str(id)+'/completed', payload)
+        print(json.loads(r.text))
     
-    def parse_data(self, datas):
+    def parse_data(self, datas, keys=None):
         data_dict = dict()
         for data in datas:
             for key, value in data.items():
-                if key == 'product_mfd' or key == 'product_epd':
+                if keys!= None and key in keys:
                     continue
                 if key in data_dict.keys():
                     data_dict[key].append(str(value))
@@ -122,9 +157,23 @@ class Ui_ShoppingCart(object):
             "    font-size:20px;\n"
             "}")
 
+        self.humanlinelabel = QtWidgets.QLabel(self.centralwidget)
+        self.humanlinelabel.setGeometry(QtCore.QRect(20, 70, 300, 41))
+        self.humanlinelabel.setObjectName("lineEdit")
+        self.humanlinelabel.setText('Human Not Detected!!')
+        self.humanlinelabel.setAlignment(QtCore.Qt.AlignCenter)
+        self.humanlinelabel.setStyleSheet("QFrame\n"
+            "{\n"
+            "    background-color: rgb(255, 255, 255);\n"
+            "    \n"
+            "    color: rgb(0, 0, 0);\n"
+            "    border-radius:10px;\n"
+            "    font-size:20px;\n"
+            "}")
+
         self.cart_data = query.query_post(id=1, product_id=1)
         self.horizontalLayoutWidget = QtWidgets.QWidget(self.centralwidget)
-        self.horizontalLayoutWidget.setGeometry(QtCore.QRect(20, 70, 300, 351))
+        self.horizontalLayoutWidget.setGeometry(QtCore.QRect(20, 120, 300, 301))
         self.horizontalLayoutWidget.setObjectName("horizontalLayoutWidget")
         self.CartData = QtWidgets.QHBoxLayout(self.horizontalLayoutWidget)
         self.CartData.setContentsMargins(0, 0, 0, 0)
@@ -167,7 +216,6 @@ class Ui_ShoppingCart(object):
         
 
         self.horizontalLayoutWidget_3 = QtWidgets.QWidget(self.centralwidget)
-        #(390, 220, 231, 251)
         self.horizontalLayoutWidget_3.setGeometry(QtCore.QRect(335, 260, 282, 211))
         self.horizontalLayoutWidget_3.setObjectName("horizontalLayoutWidget_3")
         self.AvailableProducts = QtWidgets.QHBoxLayout(self.horizontalLayoutWidget_3)
