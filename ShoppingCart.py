@@ -2,48 +2,15 @@
 from itertools import count
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QTableWidget, QTableWidgetItem
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QImage, QPixmap
 import cv2 as cv
 import sys
-import requests
-import json
-
-class TrackObject(QThread):
-    image_signal = pyqtSignal('PyQt_PyObject')
-    def __init__(self, image):
-        super().__init__()
-        self.x = 0
-        self.y = 0
-        self.w = 0
-        self.h = 0
-        self.image = image
-
-
-    def get_shape(self):
-        return self.image.shape
-
-
-    def track(self):
-        copy_image = self.image.copy()
-
-        hsv_image = cv.cvtColor(self.image, cv.COLOR_BGR2HSV)
-        lowerlimit = np.array([29, 86, 6])
-        upperlimit = np.array([64, 255, 255])
-
-        mask = cv.inRange(hsv_image, lowerlimit, upperlimit)
-        mask = cv.erode(mask, None, iterations=2) 
-        mask = cv.dilate(mask, None, iterations=2)
-
-        contours, hierarchy = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-
-        if contours.__len__() != 0:
-            cv.drawContours(copy_image, contours, -1, 255, 3)
-            max_contor = max(contours, key=cv.contourArea)
-            self.x, self.y, self.w, self.h = cv.boundingRect(max_contor)
-            return(self.x, self.y, self.w, self.h)
-        else:
-            return "Human out of range!!"
+import numpy as np
+from TrackObject import TrackObject
+from scanqr import BarcodeReader
+import time
+from ApplyQuery import ApplyQuery
 
 
 class VideoThread(QThread):
@@ -72,12 +39,15 @@ class TableView(QTableWidget):
     def __init__(self, data, *args):
         QTableWidget.__init__(self, *args)
         self.data = data
+        self.done = False
         self.setData()
         self.resizeColumnsToContents()
         self.resizeRowsToContents()
         self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-    def setData(self): 
+    def setData(self, data=None): 
+        if data != None:
+            self.data = data
         horHeaders = []
         for n, key in enumerate(self.data.keys()):
             horHeaders.append(key)
@@ -87,57 +57,30 @@ class TableView(QTableWidget):
         self.verticalHeader().setVisible(False)
         self.setHorizontalHeaderLabels(horHeaders)
 
-class ApplyQuery():
-    def __init__(self, url):
-        self.url = url
-        self.product_id = None
 
-    def get_url(self):
-        return self.url
-    
-    def query_post(self, id, flag='c', product_id=None):
-        self.product_id = product_id
-        if flag == 'c' and self.product_id:
-            payload = {
-                'product_id':str(self.product_id),
-                'count':'-1'
-            }
-            r = requests.post(self.url+'/'+str(id)+'/data', payload)
-            datas = json.loads(r.text)
-            return self.parse_data(datas=datas, keys=['key', 'cart_id'])
+    def update(self, data):
+        try:
+            self.setData(data)
+            self.done = True
+        except Exception as e:
+            self.done = False
+        finally:
+            return self.done
 
-    def query_get(self, id, flag='p'):
-        if flag=='p':
-            r = requests.get(self.url+'/'+str(id)+'/data')
-            datas = json.loads(r.text)
-            return self.parse_data(datas=datas, keys=['product_mfd', 'product_epd'])
 
-    def completed(self, id):
-        payload = {
-            'completed': True
-        }
-        r = requests.post(self.url+'/'+str(id)+'/completed', payload)
-        print(json.loads(r.text))
-    
-    def parse_data(self, datas, keys=None):
-        data_dict = dict()
-        for data in datas:
-            for key, value in data.items():
-                if keys!= None and key in keys:
-                    continue
-                if key in data_dict.keys():
-                    data_dict[key].append(str(value))
-                else:
-                    data_dict[key] = list([str(value)])
-        return data_dict
 
 
 class Ui_ShoppingCart(object):
+    def __init__(self):
+        self.reader = BarcodeReader()
+        self.scanned = False 
+        self.query = ApplyQuery('http://192.168.254.11:8080/shop')
+
+
     def setupUi(self, ShoppingCart):
         ShoppingCart.setObjectName("ShoppingCart")
         ShoppingCart.resize(637, 480)
 
-        query = ApplyQuery('http://localhost:8080/shop')
 
 
         self.centralwidget = QtWidgets.QWidget(ShoppingCart)
@@ -157,12 +100,24 @@ class Ui_ShoppingCart(object):
             "    font-size:20px;\n"
             "}")
 
-        self.humanlinelabel = QtWidgets.QLabel(self.centralwidget)
-        self.humanlinelabel.setGeometry(QtCore.QRect(20, 70, 300, 41))
-        self.humanlinelabel.setObjectName("lineEdit")
-        self.humanlinelabel.setText('Human Not Detected!!')
-        self.humanlinelabel.setAlignment(QtCore.Qt.AlignCenter)
-        self.humanlinelabel.setStyleSheet("QFrame\n"
+        # self.humanlinelabel = QtWidgets.QLabel(self.centralwidget)
+        # self.humanlinelabel.setGeometry(QtCore.QRect(20, 70, 300, 41))
+        # self.humanlinelabel.setObjectName("lineEdit")
+        # self.humanlinelabel.setText('Human Not Detected!!')
+        # self.humanlinelabel.setAlignment(QtCore.Qt.AlignCenter)
+        # self.humanlinelabel.setStyleSheet("QFrame\n"
+        #     "{\n"
+        #     "    background-color: rgb(255, 255, 255);\n"
+        #     "    \n"
+        #     "    color: rgb(0, 0, 0);\n"
+        #     "    border-radius:10px;\n"
+        #     "    font-size:20px;\n"
+        #     "}")
+
+        self.imageLabel_2 = QtWidgets.QLabel(self.centralwidget)
+        self.imageLabel_2.setGeometry(QtCore.QRect(20, 70, 282, 181))
+        self.imageLabel_2.setObjectName("PiCameraView")
+        self.imageLabel_2.setStyleSheet("QFrame\n"
             "{\n"
             "    background-color: rgb(255, 255, 255);\n"
             "    \n"
@@ -171,9 +126,10 @@ class Ui_ShoppingCart(object):
             "    font-size:20px;\n"
             "}")
 
-        self.cart_data = query.query_post(id=1, product_id=1)
+        self.cart_data = self.query.query_get(id=1, flag='c')
         self.horizontalLayoutWidget = QtWidgets.QWidget(self.centralwidget)
-        self.horizontalLayoutWidget.setGeometry(QtCore.QRect(20, 120, 300, 301))
+        # self.horizontalLayoutWidget.setGeometry(QtCore.QRect(20, 120, 300, 301))
+        self.horizontalLayoutWidget.setGeometry(QtCore.QRect(20, 260, 300, 211))
         self.horizontalLayoutWidget.setObjectName("horizontalLayoutWidget")
         self.CartData = QtWidgets.QHBoxLayout(self.horizontalLayoutWidget)
         self.CartData.setContentsMargins(0, 0, 0, 0)
@@ -190,10 +146,10 @@ class Ui_ShoppingCart(object):
             "}")
 
 
-        self.imageLabel = QtWidgets.QLabel(self.centralwidget)
-        self.imageLabel.setGeometry(QtCore.QRect(335, 70, 282, 181))
-        self.imageLabel.setObjectName("PiCameraView")
-        self.imageLabel.setStyleSheet("QFrame\n"
+        self.imageLabel_1 = QtWidgets.QLabel(self.centralwidget)
+        self.imageLabel_1.setGeometry(QtCore.QRect(335, 70, 282, 181))
+        self.imageLabel_1.setObjectName("PiCameraView")
+        self.imageLabel_1.setStyleSheet("QFrame\n"
             "{\n"
             "    background-color: rgb(255, 255, 255);\n"
             "    \n"
@@ -204,16 +160,15 @@ class Ui_ShoppingCart(object):
 
 
         # create the video capture thread
-        self.thread = VideoThread()
+        self.video_thread = VideoThread()
         # connect its signal to the update_image slot
-        self.thread.change_pixmap_signal.connect(self.update_image)
+        self.video_thread.change_pixmap_signal.connect(self.update_image)
         # start the thread
-        self.thread.start()
+        self.video_thread.start()
 
 
         # Get the product data fromt the database...
-        self.product_data = query.query_get(1, 'p')
-        
+        self.product_data = self.query.query_get(1, 'p')
 
         self.horizontalLayoutWidget_3 = QtWidgets.QWidget(self.centralwidget)
         self.horizontalLayoutWidget_3.setGeometry(QtCore.QRect(335, 260, 282, 211))
@@ -228,7 +183,17 @@ class Ui_ShoppingCart(object):
 
         self.SubmitButton = QtWidgets.QPushButton(self.centralwidget)
         self.SubmitButton.setGeometry(QtCore.QRect(20, 430, 300, 41))
+        self.SubmitButton.setText('Completed')
         self.SubmitButton.setObjectName("SubmitButton")
+        self.SubmitButton.clicked.connect(self.completed)
+
+
+        #Setting timer that updates the product and cart data at every two seconds.
+        self.update_widget_timer = QTimer()
+        self.update_widget_timer.timeout.connect(self.update_widget)
+        self.update_widget_timer.setInterval(2000)
+        self.update_widget_timer.start()
+
 
 
         ShoppingCart.setCentralWidget(self.centralwidget)
@@ -239,8 +204,10 @@ class Ui_ShoppingCart(object):
 
     def update_image(self, cv_img):
         """Updates the image_label with a new opencv image"""
-        qt_img = self.convert_cv_qt(cv_img)
-        self.imageLabel.setPixmap(qt_img)
+        qt_img_1 = self.convert_cv_qt(self.detectObj(cv_img.copy()))
+        qt_img_2 = self.convert_cv_qt(self.detectQR(cv_img))
+        self.imageLabel_1.setPixmap(qt_img_2)
+        self.imageLabel_2.setPixmap(qt_img_1)
     
     def convert_cv_qt(self, cv_img):
         """Convert from an opencv image to QPixmap"""
@@ -251,16 +218,45 @@ class Ui_ShoppingCart(object):
         p = convert_to_Qt_format.scaled(282, 211, QtCore.Qt.KeepAspectRatio)
         return QPixmap.fromImage(p)
 
+    def update_widget(self):
+        cart_data = self.query.query_get(id=1, flag='c')
+        product_data = self.query.query_get(1, 'p')
+        self.CartDataTable.update(cart_data)
+        self.AvailableProductTable.update(product_data)
 
     def closeEvent(self, event):
         self.thread.stop()
         event.accept()
 
+    def detectObj(self, image):
+        track_object = TrackObject(image)
+        obj = track_object.track()
+
+        if isinstance(obj, str):
+            cv.putText(image, text=obj[:len(obj)-2], org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+        else:
+            x, y, w, h = obj
+
+            if (w*h) >= 900:
+                cv.rectangle(image, (x, y), (x+w, y+h), (255, 0, 255), 3)
+                cv.putText(image, text="Human within range", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+            if x < 48:
+                cv.putText(image, text="Human within range(Right)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+            elif x+w > 600:
+                cv.putText(image, text="Human within range(Left)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+
+        return image
+
+    def detectQR(self, image):
+        frame, is_scanned = self.reader.decode(image)
+        return cv.flip(frame, 1)
+
+    def completed(self):
+        self.query.completed(id=1)
 
     def retranslateUi(self, ShoppingCart):
         _translate = QtCore.QCoreApplication.translate
         ShoppingCart.setWindowTitle(_translate("ShoppingCart", "Shopping Cart"))
-        self.SubmitButton.setText(_translate("ShoppingCart", "Completed"))
 
 
 if __name__ == '__main__':
