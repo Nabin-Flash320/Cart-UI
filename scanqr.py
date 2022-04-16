@@ -38,7 +38,6 @@ class BarcodeReader:
                 self.data_list = []
                 continue
             else:
-                print("inside else")
                 if self.datalength == 20:
                     print("inside == 20")
                     if self.data_list.count(self.data_list[0]) == 20:
@@ -47,7 +46,7 @@ class BarcodeReader:
                             'product_id' : '3',
                             'count':'1'
                         }
-                        r = requests.post("http://192.168.254.11:8080/shop/1/data", payload)
+                        r = requests.post("http://192.168.0.63:8080/shop/1/data", payload)
                         print (json.loads(r.text))
                         print('Data list=>', self.data_list)
                         print('data_list.count(data_list) ==>', self.data_list.count(self.data_list[0]))

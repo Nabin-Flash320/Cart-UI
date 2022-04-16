@@ -74,7 +74,8 @@ class Ui_ShoppingCart(object):
     def __init__(self):
         self.reader = BarcodeReader()
         self.scanned = False 
-        self.query = ApplyQuery('http://192.168.254.11:8080/shop')
+        self.query = ApplyQuery('http://192.168.0.63:8080/shop')
+        self.isInRange = False
 
 
     def setupUi(self, ShoppingCart):
@@ -194,8 +195,6 @@ class Ui_ShoppingCart(object):
         self.update_widget_timer.setInterval(2000)
         self.update_widget_timer.start()
 
-
-
         ShoppingCart.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(ShoppingCart)
@@ -204,10 +203,13 @@ class Ui_ShoppingCart(object):
 
     def update_image(self, cv_img):
         """Updates the image_label with a new opencv image"""
-        qt_img_1 = self.convert_cv_qt(self.detectObj(cv_img.copy()))
-        qt_img_2 = self.convert_cv_qt(self.detectQR(cv_img))
+        qt_img_2 = self.convert_cv_qt(self.detectObj(cv_img.copy()))
+        # qt_img_1 = self.convert_cv_qt(self.detectQR(cv_img.copy()))
+        if not self.isInRange:
+            qt_img_1 = self.convert_cv_qt(self.detectQR(cv_img.copy()))    
+            
         self.imageLabel_1.setPixmap(qt_img_2)
-        self.imageLabel_2.setPixmap(qt_img_1)
+        # self.imageLabel_2.setPixmap(qt_img_1)
     
     def convert_cv_qt(self, cv_img):
         """Convert from an opencv image to QPixmap"""
@@ -234,17 +236,19 @@ class Ui_ShoppingCart(object):
 
         if isinstance(obj, str):
             cv.putText(image, text=obj[:len(obj)-2], org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+            self.isInRange = False
         else:
             x, y, w, h = obj
-
             if (w*h) >= 900:
                 cv.rectangle(image, (x, y), (x+w, y+h), (255, 0, 255), 3)
                 cv.putText(image, text="Human within range", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
             if x < 48:
                 cv.putText(image, text="Human within range(Right)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+                print("Turning right!!")
             elif x+w > 600:
                 cv.putText(image, text="Human within range(Left)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
-
+                print("Turning left!!")
+            self.isInRange = True
         return image
 
     def detectQR(self, image):
