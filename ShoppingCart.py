@@ -234,7 +234,6 @@ class Ui_ShoppingCart(object):
         self.imageLabel_2.setPixmap(qt_img_1)
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BOARD)
-        self.setIsCompleted()
         GPIO.setup(7, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
         if GPIO.input(7) == GPIO.HIGH and self.lol == 0:
             print('Displaying QR...')
@@ -272,15 +271,19 @@ class Ui_ShoppingCart(object):
             if (w*h) >= 900:
                 cv.rectangle(image, (x, y), (x+w, y+h), (255, 0, 255), 3)
                 cv.putText(image, text="Human within range", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
-                i2cCheck.sendFromI2C('Move')
-            if x < 48:
-                cv.putText(image, text="Human within range(Right)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
-                print("Turning right!!")
-                i2cCheck.sendFromI2C('Right')
-            elif x+w > 600:
-                cv.putText(image, text="Human within range(Left)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
-                print("Turning left!!")
-                i2cCheck.sendFromI2C('Left')
+                #i2cCheck.sendFromI2C('Move')
+                if x < 48:
+                    cv.putText(image, text="Human within range(Right)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+                    print("Turning right!!")
+                    i2cCheck.sendFromI2C('Right')
+                elif x+w > 600:
+                    cv.putText(image, text="Human within range(Left)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+                    print("Turning left!!")
+                    i2cCheck.sendFromI2C('Left')
+                elif x > 48 and x+w < 600:
+                    cv.rectangle(image, (x, y), (x+w, y+h), (255, 0, 255), 3)
+                    cv.putText(image, text="Human within range(Center)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+                    i2cCheck.sendFromI2C('Move')
             self.isInRange = True
         return image
 

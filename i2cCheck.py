@@ -14,11 +14,11 @@ def getFromI2C():
 def sendFromI2C(dir=None):
     global addr, bus
     direction = dir
-    if direction.lower() == 'right':
+    if direction == 'Right':
         bus.write_byte(addr, 0x2)
-    elif direction.lower() == 'left':
+    elif direction == 'Left':
         bus.write_byte(addr, 0x3)
-    elif direction.lower() == 'move':
+    elif direction == 'Move':
         bus.write_byte(addr, 0x4)
 
 if __name__ == "__main__":
