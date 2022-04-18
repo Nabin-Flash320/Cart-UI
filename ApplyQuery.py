@@ -32,6 +32,10 @@ class ApplyQuery():
             r = requests.get(self.url+'/'+str(id)+'/data')
             datas = json.loads(r.text)[1]
             return self.parse_data(datas=datas, keys=['key', 'cart_id'])
+        elif flag == 'com':
+            r = requests.get(self.url+'/'+str(id)+'/data')
+            datas = json.loads(r.text)[1]
+            return self.parse_data(datas=datas, keys=['key', 'cart_id'])['completed']
 
     def completed(self, id):
         payload = {
@@ -51,3 +55,4 @@ class ApplyQuery():
                 else:
                     data_dict[key] = list([str(value)])
         return data_dict
+#self.query.query_get(id=1,flag='com')

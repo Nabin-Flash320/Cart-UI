@@ -11,6 +11,8 @@ from TrackObject import TrackObject
 from scanqr import BarcodeReader
 import time
 from ApplyQuery import ApplyQuery
+import i2cCheck
+from QRGenerator import QRCodeGenerator
 
 
 class VideoThread(QThread):
@@ -23,6 +25,8 @@ class VideoThread(QThread):
     def run(self):
         # capture from web cam
         cap = cv.VideoCapture(0)
+        cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv.CAP_PROP_FRAME_HEIGHT, 480)
         while self._run_flag:
             ret, cv_img = cap.read()
             if ret:
@@ -32,7 +36,7 @@ class VideoThread(QThread):
     def stop(self):
         """Sets run flag to False and waits for thread to finish"""
         self._run_flag = False
-        self.wait()       
+        self.wait()
 
 
 class TableView(QTableWidget):
@@ -45,7 +49,7 @@ class TableView(QTableWidget):
         self.resizeRowsToContents()
         self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
 
-    def setData(self, data=None): 
+    def setData(self, data=None):
         if data != None:
             self.data = data
         horHeaders = []
@@ -73,10 +77,12 @@ class TableView(QTableWidget):
 class Ui_ShoppingCart(object):
     def __init__(self):
         self.reader = BarcodeReader()
-        self.scanned = False 
-        self.query = ApplyQuery('http://192.168.0.63:8080/shop')
+        self.scanned = False
+        self.query = ApplyQuery('http://192.168.43.133:8080/shop')
         self.isInRange = False
-
+        self.count = 0
+        self.isCompleted = False
+        
 
     def setupUi(self, ShoppingCart):
         ShoppingCart.setObjectName("ShoppingCart")
@@ -166,6 +172,8 @@ class Ui_ShoppingCart(object):
         self.video_thread.change_pixmap_signal.connect(self.update_image)
         # start the thread
         self.video_thread.start()
+        
+        self.setIsComplted()
 
 
         # Get the product data fromt the database...
@@ -203,13 +211,21 @@ class Ui_ShoppingCart(object):
 
     def update_image(self, cv_img):
         """Updates the image_label with a new opencv image"""
-        qt_img_2 = self.convert_cv_qt(self.detectObj(cv_img.copy()))
-        # qt_img_1 = self.convert_cv_qt(self.detectQR(cv_img.copy()))
-        if not self.isInRange:
-            qt_img_1 = self.convert_cv_qt(self.detectQR(cv_img.copy()))    
+        #qt_img_2 = self.convert_cv_qt(self.detectObj(cv_img.copy()))
+        if self.count % 40 != 0:
+            qt_img_1 = self.convert_cv_qt(cv_img.copy())
+            self.count += 1
+        else:
+            qt_img_1 = self.convert_cv_qt(self.detectObj(cv_img.copy()))
+            #qt_img_1 = self.detectObj(cv_img.copy())
+            #qt_img_2 = self.convert_cv_qt(self.detectQR(cv_img.copy()))
+            self.count +=1
+            print(self.isInRange)
+            if not self.isInRange:
+                qt_img_1 = self.convert_cv_qt(self.detectQR(cv_img.copy()))    
             
-        self.imageLabel_1.setPixmap(qt_img_2)
-        # self.imageLabel_2.setPixmap(qt_img_1)
+        #self.imageLabel_1.setPixmap(qt_img_2)
+        self.imageLabel_2.setPixmap(qt_img_1)
     
     def convert_cv_qt(self, cv_img):
         """Convert from an opencv image to QPixmap"""
@@ -242,21 +258,48 @@ class Ui_ShoppingCart(object):
             if (w*h) >= 900:
                 cv.rectangle(image, (x, y), (x+w, y+h), (255, 0, 255), 3)
                 cv.putText(image, text="Human within range", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
+                i2cCheck.sendFromI2C('Move')
             if x < 48:
                 cv.putText(image, text="Human within range(Right)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
                 print("Turning right!!")
+                i2cCheck.sendFromI2C('Right')
             elif x+w > 600:
                 cv.putText(image, text="Human within range(Left)", org=(20, 55), fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(0, 0, 0),thickness=2)
                 print("Turning left!!")
+                i2cCheck.sendFromI2C('Left')
             self.isInRange = True
         return image
 
     def detectQR(self, image):
         frame, is_scanned = self.reader.decode(image)
         return cv.flip(frame, 1)
+    
+    def setIsComplted(self):
+        truth = self.query.query_get(id=1,flag='com')
+        if truth.count('True') == len(truth):
+            self.isComplted = True
+            print("Inside false, {}".format(self.isComplted))
+            generator = QRCodeGenerator()
+            generator.generateQR()
+            qr = generator.getQR()
+            qt_img_2 = self.convert_cv_qt(qr)
+            self.imageLabel_1.setPixmap(qt_img_2)
+        if truth.count('False') == len(truth):
+            self.isCompleted = False
+            
 
     def completed(self):
-        self.query.completed(id=1)
+        self.setIsComplted()
+        generator = QRCodeGenerator()
+        generator.generateQR()
+        if self.isCompleted == True:
+            print("Already Completed!!")
+        else:
+            self.query.completed(id=1)
+            qr = generator.getQR()
+            qt_img_2 = self.convert_cv_qt(qr)
+            self.imageLabel_1.setPixmap(qt_img_2)
+            self.isCompleted = True
 
     def retranslateUi(self, ShoppingCart):
         _translate = QtCore.QCoreApplication.translate
