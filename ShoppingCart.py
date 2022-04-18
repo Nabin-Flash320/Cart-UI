@@ -13,6 +13,9 @@ import time
 from ApplyQuery import ApplyQuery
 import i2cCheck
 from QRGenerator import QRCodeGenerator
+import RPi.GPIO as GPIO
+
+
 
 
 class VideoThread(QThread):
@@ -82,6 +85,7 @@ class Ui_ShoppingCart(object):
         self.isInRange = False
         self.count = 0
         self.isCompleted = False
+        self.lol = 0
         
 
     def setupUi(self, ShoppingCart):
@@ -173,7 +177,9 @@ class Ui_ShoppingCart(object):
         # start the thread
         self.video_thread.start()
         
-        self.setIsComplted()
+        self.setIsCompleted()
+        
+                   
 
 
         # Get the product data fromt the database...
@@ -226,6 +232,14 @@ class Ui_ShoppingCart(object):
             
         #self.imageLabel_1.setPixmap(qt_img_2)
         self.imageLabel_2.setPixmap(qt_img_1)
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BOARD)
+        self.setIsCompleted()
+        GPIO.setup(7, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+        if GPIO.input(7) == GPIO.HIGH and self.lol == 0:
+            print('Displaying QR...')
+            self.completed()
+            self.lol = 1
     
     def convert_cv_qt(self, cv_img):
         """Convert from an opencv image to QPixmap"""
@@ -274,7 +288,7 @@ class Ui_ShoppingCart(object):
         frame, is_scanned = self.reader.decode(image)
         return cv.flip(frame, 1)
     
-    def setIsComplted(self):
+    def setIsCompleted(self):
         truth = self.query.query_get(id=1,flag='com')
         if truth.count('True') == len(truth):
             self.isComplted = True
@@ -286,10 +300,11 @@ class Ui_ShoppingCart(object):
             self.imageLabel_1.setPixmap(qt_img_2)
         if truth.count('False') == len(truth):
             self.isCompleted = False
+            self.lol = 0
             
 
     def completed(self):
-        self.setIsComplted()
+        self.setIsCompleted()
         generator = QRCodeGenerator()
         generator.generateQR()
         if self.isCompleted == True:

@@ -18,7 +18,7 @@ def sendFromI2C(dir=None):
         bus.write_byte(addr, 0x2)
     elif direction.lower() == 'left':
         bus.write_byte(addr, 0x3)
-    else:
+    elif direction.lower() == 'move':
         bus.write_byte(addr, 0x4)
 
 if __name__ == "__main__":
